@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nova</title>
+<style>
+  html,body{height:100%}
+  body{margin:0;background:#fff}
+  #root{height:100vh}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useRef, useEffect, useCallback } = React;
+
+// ── Nova Logo ───────────────
+const NovaLogo = ({ size = 36, spin = false }) => {
+  const gid = `ng${size}`;
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none"
+      style={spin ? { animation:"n-rotate 1.1s linear infinite" } : undefined}>
+      <defs>
+        <radialGradient id={gid} cx="36%" cy="32%" r="72%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
+          <stop offset="55%" stopColor="#cccccc" stopOpacity="0.85"/>
+          <stop offset="100%" stopColor="#888888" stopOpacity="0.6" />
+        </radialGradient>
+      </defs>
+      {[0,45,90,135,180,225,270,315].map((deg,i) => (
+        <ellipse key={i} cx="50" cy="50" rx="8.5" ry="27"
+          fill={`url(#${gid})`}
+          opacity={0.5 + (i%2)*0.22}
+          style={{ transformOrigin:"50px 50px", transform:`rotate(${deg}deg)` }}
+        />
+      ))}
+      <circle cx="50" cy="50" r="14" fill={`url(#${gid})`} opacity="0.92"/>
+      <circle cx="50" cy="50" r="6" fill="#ffffff" opacity="0.95"/>
+    </svg>
+  );
+};
+
+const IconBox = ({ size=36, radius, spin=false }) => (
+  <div style={{
+    width:size, height:size,
+    borderRadius: radius ?? size*0.27,
+    background:"#0a0a0a",
+    display:"flex", alignItems:"center", justifyContent:"center",
+    boxShadow:"0 4px 16px rgba(0,0,0,0.15)"
+  }}>
+    <NovaLogo size={size*0.66} spin={spin}/>
+  </div>
+);
+
+// ── Message renderer ────────────────
+const renderMessage = (text) => {
+  return text.split(/(```[\s\S]*?```)/g).map((part,i)=>{
+    if(part.startsWith("```")&&part.endsWith("```")){
+      const inner=part.slice(3,-3);
+      const nl=inner.indexOf("\n");
+      const lang=nl>-1?inner.slice(0,nl).trim():"";
+      const code=nl>-1?inner.slice(nl+1):inner;
+      return(
+        <div key={i} style={{background:"#111",border:"1px solid #252525",borderRadius:10,margin:"10px 0",overflow:"hidden"}}>
+          {lang&&<div style={{background:"#191919",padding:"5px 14px",fontSize:11,color:"#555",letterSpacing:0.6,textTransform:"uppercase",fontFamily:"'DM Mono',monospace"}}>{lang}</div>}
+          <pre style={{margin:0,padding:"14px 16px",overflowX:"auto",fontSize:12.5,lineHeight:1.7,color:"#ddd",fontFamily:"'DM Mono',monospace"}}><code>{code}</code></pre>
+        </div>
+      );
+    }
+    return(
+      <span key={i} style={{whiteSpace:"pre-wrap",lineHeight:1.78}}>
+        {part.split(/(\*\*[^*]+\*\*)/g).map((s,j)=>
+          s.startsWith("**")&&s.endsWith("**")
+            ?<strong key={j} style={{fontWeight:600}}>{s.slice(2,-2)}</strong>
+            :s
+        )}
+      </span>
+    );
+  });
+};
+
+const TypingDots = ()=>(
+  <div style={{display:"flex",gap:5,padding:"3px 2px",alignItems:"center"}}>
+    {[0,1,2].map(i=>(
+      <div key={i} style={{width:6,height:6,borderRadius:"50%",background:"#999",
+        animation:`n-bounce 1.3s ease-in-out ${i*0.17}s infinite`}}/>
+    ))}
+  </div>
+);
+
+const CHIPS = ["Python으로 퀵소트 짜줘","우주의 크기는 얼마나 될까?","영어 이메일 작성 도와줘","오늘 대화나 해볼까?"];
+
+// ── App ──────────────────────────────────────────────────────
+function App(){
+  const [screen,setScreen] = useState("splash");
+  const [splashIn,setSplashIn] = useState(false);
+  const [enterIn,setEnterIn] = useState(false);
+  const [nick,setNick] = useState("");
+  const [nickInput,setNickInput] = useState("");
+  const [nickErr,setNickErr] = useState("");
+  const [authMode,setAuthMode] = useState("login"); // 'login' | 'signup'
+  const [email,setEmail] = useState("");
+  const [password,setPassword] = useState("");
+  const [authErr,setAuthErr] = useState("");
+  const [messages,setMessages] = useState([]);
+  const [input,setInput] = useState("");
+  const [loading,setLoading] = useState(false);
+  const bottomRef = useRef(null);
+  const taRef = useRef(null);
+
+  useEffect(()=>{
+    const s=document.createElement("style");
+    s.textContent=`
+      @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{background:#fff;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+      @keyframes n-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+      @keyframes n-fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes n-spin{to{transform:rotate(360deg)}}
+      @keyframes n-rotate{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+      @keyframes n-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+      @keyframes n-in{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+      .nfade{animation:n-fade .4s cubic-bezier(.22,.68,0,1.15) forwards}
+      .nmsg{animation:n-fade .28s ease forwards}
+      ::-webkit-scrollbar{width:3px}
+      ::-webkit-scrollbar-thumb{background:#e4e4e4;border-radius:4px}
+      input:focus,textarea:focus{outline:none}
+      input::placeholder,textarea::placeholder{color:#c4c4c4;font-family:'DM Sans',sans-serif}
+      button{font-family:'DM Sans',sans-serif}
+    `;
+    document.head.appendChild(s);
+
+    // 로그인 상태 확인
+    try{
+      const activeEmail = localStorage.getItem("nova_active");
+      if(activeEmail){
+        const users = JSON.parse(localStorage.getItem("nova_users")||"{}");
+        const user = users[activeEmail];
+        if(user){
+          const msgs = JSON.parse(localStorage.getItem("nova_msgs_"+activeEmail)||"[]");
+          setNick(user.nick);
+          setEmail(activeEmail);
+          setMessages(msgs.length?msgs:[{role:"assistant",text:`다시 만나서 반가워요, **${user.nick}**님.\n\n무엇을 도와드릴까요?`}]);
+          setSplashIn(true);
+          setScreen("chat");
+          return ()=>document.head.removeChild(s);
+        }
+      }
+    }catch(e){}
+
+    setTimeout(()=>setSplashIn(true),300);
+    setTimeout(()=>setScreen("nickname"),2100);
+    return()=>document.head.removeChild(s);
+  },[]);
+
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,loading]);
+
+  // 대화 자동 저장 (계정별)
+  useEffect(()=>{
+    if(email && messages.length){
+      try{
+        localStorage.setItem("nova_msgs_"+email, JSON.stringify(messages));
+      }catch(e){}
+    }
+  },[email,messages]);
+
+  const resizeTA=()=>{
+    const el=taRef.current;
+    if(el){el.style.height="auto";el.style.height=Math.min(el.scrollHeight,138)+"px";}
+  };
+
+  const handleAuth=()=>{
+    const em = email.trim().toLowerCase();
+    const pw = password;
+    const nm = nickInput.trim();
+
+    if(!em || !em.includes("@")) return setAuthErr("올바른 이메일을 입력해 주세요.");
+    if(!pw || pw.length<4) return setAuthErr("비밀번호는 4자 이상이어야 해요.");
+
+    let users={};
+    try{ users = JSON.parse(localStorage.getItem("nova_users")||"{}"); }catch(e){}
+
+    if(authMode==="signup"){
+      if(!nm) return setAuthErr("닉네임을 입력해 주세요.");
+      if(nm.length<2||nm.length>16) return setAuthErr("닉네임은 2~16자로 입력해 주세요.");
+      if(users[em]) return setAuthErr("이미 가입된 이메일이에요. 로그인해 주세요.");
+      users[em] = { password: pw, nick: nm };
+      localStorage.setItem("nova_users", JSON.stringify(users));
+      localStorage.setItem("nova_active", em);
+      setNick(nm);
+      setMessages([{role:"assistant",text:`안녕하세요, **${nm}**님.\n\n저는 Nova입니다. 대화, 코딩, 글쓰기, 분석까지 — 무엇이든 도와드릴게요.\n\n편하게 시작해 보세요.`}]);
+    }else{
+      const user = users[em];
+      if(!user) return setAuthErr("가입되지 않은 이메일이에요.");
+      if(user.password!==pw) return setAuthErr("비밀번호가 일치하지 않아요.");
+      localStorage.setItem("nova_active", em);
+      const msgs = JSON.parse(localStorage.getItem("nova_msgs_"+em)||"[]");
+      setNick(user.nick);
+      setMessages(msgs.length?msgs:[{role:"assistant",text:`다시 만나서 반가워요, **${user.nick}**님.\n\n무엇을 도와드릴까요?`}]);
+    }
+
+    setAuthErr("");
+    setScreen("entering");
+    setTimeout(()=>setEnterIn(true),50);
+    setTimeout(()=>setScreen("chat"),1600);
+  };
+
+  const handleLogout=()=>{
+    try{ localStorage.removeItem("nova_active"); }catch(e){}
+    setNick("");
+    setEmail("");
+    setPassword("");
+    setNickInput("");
+    setAuthErr("");
+    setMessages([]);
+    setInput("");
+    setEnterIn(false);
+    setAuthMode("login");
+    setScreen("nickname");
+  };
+
+  const send=useCallback(async(txt)=>{
+    const t=(txt||input).trim();
+    if(!t||loading)return;
+    const next=[...messages,{role:"user",text:t}];
+    setMessages(next);
+    setInput("");
+    if(taRef.current){taRef.current.style.height="auto";}
+    setLoading(true);
+    try{
+      const r=await fetch("/api/chat",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          system:`You are Nova, a premium AI assistant — elegant, clear, and highly capable. Before answering, briefly consider the user's intent and the best way to explain things, then respond thoughtfully and naturally — as if you genuinely thought it through, not as a canned reply. You excel at conversation, coding (use fenced code blocks with language labels), writing, math, and analysis. Respond in Korean when the user writes Korean. Be warm yet concise, and explain your reasoning when it helps the user understand. Use **bold** only for key terms. The user's name is ${nick}.`,
+          messages:next.map(m=>({role:m.role,content:m.text}))
+        })
+      });
+      const d=await r.json();
+      let reply;
+      if(d.error){
+        reply = "오류: " + d.error.message;
+      } else {
+        reply = d.content?.map(c=>c.text||"").join("")||"잠시 후 다시 시도해 주세요.";
+      }
+      setMessages(p=>[...p,{role:"assistant",text:reply}]);
+    }catch(e){
+      setMessages(p=>[...p,{role:"assistant",text:"연결에 문제가 생겼어요. 다시 시도해 주세요."}]);
+    }
+    setLoading(false);
+  },[input,messages,loading,nick]);
+
+  const onKey=e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();} };
+
+  const F = "'DM Sans', sans-serif";
+  const FM= "'DM Mono', monospace";
+
+  // ── SPLASH ────────────────────────────────────────────────
+  if(screen==="splash") return(
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",background:"#0a0a0a",gap:18}}>
+      <div style={{opacity:splashIn?1:0,transition:"opacity .7s",
+        animation:splashIn?"n-float 4s ease-in-out infinite":"none"}}>
+        <NovaLogo size={68}/>
+      </div>
+      <div style={{opacity:splashIn?1:0,transition:"opacity .8s .15s",
+        color:"#fff",fontSize:26,fontWeight:300,letterSpacing:7,
+        textTransform:"uppercase",fontFamily:F}}>Nova</div>
+      <div style={{opacity:splashIn?1:0,transition:"opacity .8s .3s",
+        color:"#3a3a3a",fontSize:11,letterSpacing:3,textTransform:"uppercase",fontFamily:F}}>
+        AI Assistant
+      </div>
+    </div>
+  );
+
+  // ── NICKNAME ──────────────────────────────────────────────
+  if(screen==="nickname") return(
+    <div style={{height:"100vh",display:"flex",alignItems:"center",
+      justifyContent:"center",background:"#fff",padding:28}}>
+      <div className="nfade" style={{width:"100%",maxWidth:360,display:"flex",flexDirection:"column",gap:0}}>
+
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,marginBottom:40}}>
+          <IconBox size={60} radius={17}/>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:23,fontWeight:500,color:"#0a0a0a",letterSpacing:"-0.6px",fontFamily:F,lineHeight:1.3}}>
+              {authMode==="login" ? "Nova에 로그인" : "Nova 계정 만들기"}
+            </div>
+            <div style={{fontSize:14,color:"#b0b0b0",marginTop:7,fontWeight:400,fontFamily:F,letterSpacing:"0.1px"}}>
+              {authMode==="login" ? "다시 만나서 반가워요" : "몇 초만에 시작할 수 있어요"}
+            </div>
+          </div>
+        </div>
+
+        {authMode==="signup" && (
+          <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:12}}>
+            <label style={{fontSize:12,fontWeight:500,color:"#888",letterSpacing:"0.3px",fontFamily:F}}>닉네임</label>
+            <input
+              value={nickInput}
+              maxLength={16}
+              placeholder="2 ~ 16자"
+              onChange={e=>{setNickInput(e.target.value);setAuthErr("");}}
+              onKeyDown={e=>e.key==="Enter"&&handleAuth()}
+              style={{
+                width:"100%",padding:"14px 16px",borderRadius:11,
+                border:"1.5px solid #ebebeb",fontSize:15,color:"#0a0a0a",background:"#fafafa",
+                fontFamily:F,letterSpacing:"0.1px",transition:"border .18s, box-shadow .18s"
+              }}
+              onFocus={e=>{e.target.style.border="1.5px solid #0a0a0a";e.target.style.background="#fff";e.target.style.boxShadow="0 0 0 3px rgba(0,0,0,0.05)";}}
+              onBlur={e=>{e.target.style.border="1.5px solid #ebebeb";e.target.style.background="#fafafa";e.target.style.boxShadow="none";}}
+            />
+          </div>
+        )}
+
+        <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:12}}>
+          <label style={{fontSize:12,fontWeight:500,color:"#888",letterSpacing:"0.3px",fontFamily:F}}>이메일</label>
+          <input
+            autoFocus
+            type="email"
+            value={email}
+            placeholder="you@example.com"
+            onChange={e=>{setEmail(e.target.value);setAuthErr("");}}
+            onKeyDown={e=>e.key==="Enter"&&handleAuth()}
+            style={{
+              width:"100%",padding:"14px 16px",borderRadius:11,
+              border:"1.5px solid #ebebeb",fontSize:15,color:"#0a0a0a",background:"#fafafa",
+              fontFamily:F,letterSpacing:"0.1px",transition:"border .18s, box-shadow .18s"
+            }}
+            onFocus={e=>{e.target.style.border="1.5px solid #0a0a0a";e.target.style.background="#fff";e.target.style.boxShadow="0 0 0 3px rgba(0,0,0,0.05)";}}
+            onBlur={e=>{e.target.style.border="1.5px solid #ebebeb";e.target.style.background="#fafafa";e.target.style.boxShadow="none";}}
+          />
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:8}}>
+          <label style={{fontSize:12,fontWeight:500,color:"#888",letterSpacing:"0.3px",fontFamily:F}}>비밀번호</label>
+          <input
+            type="password"
+            value={password}
+            placeholder="4자 이상"
+            onChange={e=>{setPassword(e.target.value);setAuthErr("");}}
+            onKeyDown={e=>e.key==="Enter"&&handleAuth()}
+            style={{
+              width:"100%",padding:"14px 16px",borderRadius:11,
+              border:authErr?"1.5px solid #e03":"1.5px solid #ebebeb",
+              fontSize:15,color:"#0a0a0a",background:"#fafafa",
+              fontFamily:F,letterSpacing:"0.1px",transition:"border .18s, box-shadow .18s"
+            }}
+            onFocus={e=>{e.target.style.border="1.5px solid #0a0a0a";e.target.style.background="#fff";e.target.style.boxShadow="0 0 0 3px rgba(0,0,0,0.05)";}}
+            onBlur={e=>{e.target.style.border=authErr?"1.5px solid #e03":"1.5px solid #ebebeb";e.target.style.background="#fafafa";e.target.style.boxShadow="none";}}
+          />
+          <div style={{minHeight:17}}>
+            <span style={{fontSize:12,color:"#e03",fontFamily:F}}>{authErr}</span>
+          </div>
+        </div>
+
+        <button onClick={handleAuth} style={{
+          padding:"14px",borderRadius:11,background:"#0a0a0a",
+          color:"#fff",fontWeight:500,fontSize:15,border:"none",cursor:"pointer",
+          fontFamily:F,letterSpacing:"0.15px",transition:"opacity .15s,transform .12s",marginTop:6
+        }}
+          onMouseEnter={e=>e.target.style.opacity=".82"}
+          onMouseLeave={e=>e.target.style.opacity="1"}
+          onMouseDown={e=>e.target.style.transform="scale(.985)"}
+          onMouseUp={e=>e.target.style.transform="scale(1)"}
+        >{authMode==="login" ? "로그인" : "회원가입"}</button>
+
+        <button onClick={()=>{setAuthMode(authMode==="login"?"signup":"login");setAuthErr("");}} style={{
+          padding:"12px",borderRadius:11,background:"transparent",
+          color:"#888",fontWeight:500,fontSize:13.5,border:"none",cursor:"pointer",
+          fontFamily:F,letterSpacing:"0.1px",marginTop:4
+        }}>
+          {authMode==="login" ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}
+        </button>
+
+        <p style={{fontSize:11.5,color:"#ccc",textAlign:"center",marginTop:14,lineHeight:1.75,fontFamily:F}}>
+          계속하면 이용약관 및 개인정보 처리방침에<br/>동의하는 것으로 간주됩니다
+        </p>
+      </div>
+    </div>
+  );
+
+  // ── ENTERING (transition animation) ───────────────────────
+  if(screen==="entering") return(
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",background:"#fff",gap:18}}>
+      <div style={{opacity:enterIn?1:0,transform:enterIn?"scale(1)":"scale(.9)",
+        transition:"all .5s cubic-bezier(.22,.68,0,1.15)",
+        animation:enterIn?"n-float 2.4s ease-in-out infinite":"none"}}>
+        <IconBox size={60} radius={17}/>
+      </div>
+      <div style={{opacity:enterIn?1:0,transition:"opacity .6s .15s",
+        color:"#0a0a0a",fontSize:16,fontWeight:500,fontFamily:F,letterSpacing:"-0.2px"}}>
+        {nick}님, 환영합니다
+      </div>
+      <div style={{opacity:enterIn?1:0,transition:"opacity .6s .3s",marginTop:6}}>
+        <TypingDots/>
+      </div>
+    </div>
+  );
+
+  // ── CHAT ─────────────────────────────────────────────────
+  const isEmpty=messages.filter(m=>m.role==="user").length===0;
+
+  return(
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",background:"#fff"}}>
+
+      <header style={{
+        height:56,padding:"0 18px",display:"flex",alignItems:"center",
+        justifyContent:"space-between",borderBottom:"1px solid #f2f2f2",
+        background:"#fff",position:"sticky",top:0,zIndex:20
+      }}>
+        <div style={{display:"flex",alignItems:"center",gap:9}}>
+          <IconBox size={30} radius={8}/>
+          <span style={{fontSize:16,fontWeight:500,color:"#0a0a0a",letterSpacing:"-0.4px",fontFamily:F}}>Nova</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,
+            padding:"5px 12px 5px 6px",borderRadius:20,border:"1px solid #ededed"}}>
+            <div style={{width:23,height:23,borderRadius:"50%",background:"#0a0a0a",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:10.5,fontWeight:600,color:"#fff",fontFamily:F,letterSpacing:"0.2px"}}>
+              {nick.charAt(0).toUpperCase()}
+            </div>
+            <span style={{fontSize:13,color:"#555",fontWeight:400,fontFamily:F}}>{nick}</span>
+          </div>
+          <button onClick={handleLogout} title="로그아웃 / 새 대화" style={{
+            width:32,height:32,borderRadius:"50%",border:"1px solid #ededed",
+            background:"#fff",cursor:"pointer",display:"flex",alignItems:"center",
+            justifyContent:"center",transition:"background .15s"
+          }}
+            onMouseEnter={e=>e.currentTarget.style.background="#f5f5f5"}
+            onMouseLeave={e=>e.currentTarget.style.background="#fff"}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="#888" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div style={{flex:1,overflowY:"auto",padding:"0 0 8px"}}>
+        {isEmpty&&(
+          <div className="nfade" style={{display:"flex",flexDirection:"column",alignItems:"center",
+            justifyContent:"center",padding:"56px 24px 28px",gap:8}}>
+            <div style={{animation:"n-float 4s ease-in-out infinite"}}>
+              <IconBox size={54} radius={15}/>
+            </div>
+            <div style={{fontSize:20,fontWeight:500,color:"#0a0a0a",marginTop:14,
+              letterSpacing:"-0.5px",fontFamily:F}}>무엇을 도와드릴까요?</div>
+            <div style={{fontSize:13.5,color:"#b8b8b8",textAlign:"center",lineHeight:1.65,fontFamily:F}}>
+              대화, 코딩, 글쓰기, 분석 — 뭐든 가능해요
+            </div>
+          </div>
+        )}
+
+        <div style={{maxWidth:700,margin:"0 auto",padding:"14px 16px 0"}}>
+          {messages.map((msg,i)=>(
+            <div key={i} className="nmsg" style={{
+              display:"flex",
+              flexDirection:msg.role==="user"?"row-reverse":"row",
+              alignItems:"flex-end",gap:9,marginBottom:18
+            }}>
+              {msg.role==="assistant"&&(
+                <div style={{width:28,height:28,borderRadius:8,background:"#0a0a0a",
+                  display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginBottom:1}}>
+                  <NovaLogo size={19}/>
+                </div>
+              )}
+              <div style={{
+                maxWidth:"77%",
+                padding:msg.role==="user"?"11px 15px":"12px 16px",
+                background:msg.role==="user"?"#0a0a0a":"#f5f5f5",
+                color:msg.role==="user"?"#fff":"#111",
+                borderRadius:msg.role==="user"?"18px 18px 4px 18px":"4px 18px 18px 18px",
+                fontSize:14,fontFamily:F,lineHeight:1.75,letterSpacing:"0.05px",
+                fontWeight:400
+              }}>
+                {msg.role==="assistant"?renderMessage(msg.text):msg.text}
+              </div>
+            </div>
+          ))}
+          {loading&&(
+            <div className="nmsg" style={{display:"flex",alignItems:"flex-end",gap:9,marginBottom:18}}>
+              <div style={{width:28,height:28,borderRadius:8,background:"#0a0a0a",
+                display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <NovaLogo size={19} spin/>
+              </div>
+              <div style={{padding:"11px 14px",background:"#f5f5f5",borderRadius:"4px 18px 18px 18px",
+                fontSize:13,color:"#999",fontFamily:F}}>
+                생각하는 중…
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef}/>
+        </div>
+      </div>
+
+      {isEmpty&&!loading&&(
+        <div style={{padding:"0 16px 10px",maxWidth:700,margin:"0 auto",width:"100%"}}>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+            {CHIPS.map((c,i)=>(
+              <button key={i} onClick={()=>send(c)} style={{
+                padding:"8px 14px",borderRadius:20,border:"1px solid #e8e8e8",
+                background:"#fff",color:"#555",fontSize:13,cursor:"pointer",
+                transition:"all .14s",fontWeight:400,fontFamily:F,letterSpacing:"0.05px"
+              }}
+                onMouseEnter={e=>{e.currentTarget.style.background="#0a0a0a";e.currentTarget.style.color="#fff";e.currentTarget.style.border="1px solid #0a0a0a";}}
+                onMouseLeave={e=>{e.currentTarget.style.background="#fff";e.currentTarget.style.color="#555";e.currentTarget.style.border="1px solid #e8e8e8";}}
+              >{c}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{padding:"10px 16px 22px",background:"#fff",borderTop:"1px solid #f2f2f2"}}>
+        <div style={{maxWidth:700,margin:"0 auto",display:"flex",alignItems:"flex-end",gap:9,
+          background:"#f5f5f5",borderRadius:18,padding:"10px 11px 10px 16px",
+          border:"1.5px solid transparent",transition:"border .18s"}}
+          onFocusCapture={e=>e.currentTarget.style.border="1.5px solid #ddd"}
+          onBlurCapture={e=>e.currentTarget.style.border="1.5px solid transparent"}
+        >
+          <textarea
+            ref={taRef}
+            value={input}
+            rows={1}
+            placeholder="메시지를 입력하세요…"
+            onChange={e=>{setInput(e.target.value);resizeTA();}}
+            onKeyDown={onKey}
+            style={{
+              flex:1,background:"transparent",border:"none",resize:"none",
+              fontSize:14,fontFamily:F,color:"#0a0a0a",lineHeight:1.65,
+              maxHeight:138,overflowY:"auto",letterSpacing:"0.05px"
+            }}
+          />
+          <button
+            onClick={()=>send()}
+            disabled={loading||!input.trim()}
+            style={{
+              width:33,height:33,borderRadius:"50%",border:"none",flexShrink:0,
+              background:(!input.trim()||loading)?"#e2e2e2":"#0a0a0a",
+              color:"#fff",cursor:(!input.trim()||loading)?"default":"pointer",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              transition:"background .18s"
+            }}
+          >
+            {loading
+              ?<div style={{width:13,height:13,border:"2px solid #bbb",borderTop:"2px solid #666",
+                  borderRadius:"50%",animation:"n-spin .7s linear infinite"}}/>
+              :<svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+            }
+          </button>
+        </div>
+        <p style={{fontSize:11,color:"#d4d4d4",textAlign:"center",marginTop:9,
+          fontFamily:F,letterSpacing:"0.15px"}}>
+          Enter 전송 &nbsp;·&nbsp; Shift+Enter 줄 바꿈
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
