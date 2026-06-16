@@ -19,7 +19,7 @@ export default async function handler(req, res) {
         'Authorization': 'Bearer ' + apiKey
       },
       body: JSON.stringify({
-        model: 'meta-llama/llama-3.1-8b-instruct:free',
+        model: 'google/gemma-3-4b-it:free'
         messages: chatMessages
       })
     });
