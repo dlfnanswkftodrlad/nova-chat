@@ -19,7 +19,7 @@ export default async function handler(req, res) {
         'Authorization': 'Bearer ' + apiKey
       },
       body: JSON.stringify({
-        model: 'mistralai/mistral-7b-instruct:free'
+        model: 'deepseek/deepseek-r1:free'
         messages: chatMessages
       })
     });
